@@ -12,12 +12,15 @@ const RightSidebar = dynamic(() => import("@/components/RightSidebar"), {
 });
 
 export default function Home() {
+  
+  const sessionId = Math.random()
+
   return (
     <div className="flex flex-col h-screen w-full">
       <TopNavBar />
       <div className="flex flex-1 overflow-hidden h-screen w-full">
         {config.includeLeftSidebar && <LeftSidebar />}
-        <ChatArea />
+        <ChatArea sessionId={crypto.randomUUID()}/>
         {config.includeRightSidebar && <RightSidebar />}
       </div>
     </div>

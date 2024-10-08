@@ -18,7 +18,8 @@ An advanced, fully customizable customer support chat interface powered by Claud
 2. Install dependencies: `npm install`
 3. Set up your environment variables (see Configuration section)
 4. Run the development server: `npm run dev`
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. To start using Datadog LLM Observability, use `DD_SITE=<YOUR-SITE> DD_API_KEY=<YOUR-DD-API-KEY> DD_LLMOBS_ENABLED=true DD_LLMOBS_ML_APP=anthropic-customer-support-agent DD_LLMOBS_AGENTLESS_ENABLED=true NODE_OPTIONS='--require dd-trace/init' npm run dev`
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## ⚙️ Configuration
 

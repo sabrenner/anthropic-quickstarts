@@ -1,6 +1,10 @@
+import tracer from 'dd-trace';
+const llmobs = tracer.llmobs;
+
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { retrieveContext, RAGSource } from "@/app/lib/utils";
+import { retrieveContext } from "@/app/lib/utils/rag";
+import { RAGSource } from '@/app/lib/utils/types';
 import crypto from "crypto";
 import customerSupportCategories from "@/app/lib/customer_support_categories.json";
 
@@ -61,12 +65,13 @@ const logTimestamp = (label: string, start: number) => {
 };
 
 // Main POST request handler
-export async function POST(req: Request) {
+async function POST(req: Request) {
   const apiStart = performance.now();
   const measureTime = (label: string) => logTimestamp(label, apiStart);
 
   // Extract data from the request body
-  const { messages, model, knowledgeBaseId } = await req.json();
+  const { messages, model, knowledgeBaseId, sessionId } = await req.json();
+  llmobs.annotate({ inputData: { messages, model, knowledgeBaseId }, tags: { session_id: sessionId } });
   const latestMessage = messages[messages.length - 1].content;
 
   console.log("📝 Latest Query:", latestMessage);
@@ -208,6 +213,8 @@ export async function POST(req: Request) {
       throw new Error("Invalid JSON response from AI");
     }
   }
+  // @ts-ignore
+  sanitizeAndParseJSON = llmobs.wrap('task', sanitizeAndParseJSON)
 
   try {
     console.log(`🚀 Query Processing`);
@@ -223,22 +230,44 @@ export async function POST(req: Request) {
       content: "{",
     });
 
-    const response = await anthropic.messages.create({
-      model: model,
-      max_tokens: 1000,
-      messages: anthropicMessages,
-      system: systemPrompt,
-      temperature: 0.3,
+    const response = await llmobs.trace('llm', { name: 'anthropic.messages.create', modelName: model, modelProvider: 'anthropic' }, async () => {
+      const response = await anthropic.messages.create({
+        model: model,
+        max_tokens: 1000,
+        messages: anthropicMessages,
+        system: systemPrompt,
+        temperature: 0.3,
+      });
+
+      llmobs.annotate({
+        inputData: [ { role: 'system', content: systemPrompt }, ...messages ],
+        outputData: [{ content: response?.content, role: response?.role }],
+        metadata: {
+          max_tokens: 1000,
+          temperature: 0.3,
+        }
+      })
+
+      return response
     });
 
     measureTime("Claude Generation Complete");
     console.log("✅ Message generation completed");
 
     // Extract text content from the response
-    const textContent = "{" + response.content
+    const textContent = llmobs.trace('task', { name: 'extractTextContent' }, () => {
+      const textContent = "{" + response.content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
       .map((block) => block.text)
       .join(" ");
+
+      llmobs.annotate({
+        inputData: response.content,
+        outputData: textContent
+      })
+
+      return textContent;
+    })
 
     // Parse the JSON response
     let parsedResponse;
@@ -249,7 +278,14 @@ export async function POST(req: Request) {
       throw new Error("Invalid JSON response from AI");
     }
 
-    const validatedResponse = responseSchema.parse(parsedResponse);
+    const validatedResponse = llmobs.trace('task', { name: 'validateResponse' }, () => {
+      const validatedResponse = responseSchema.parse(parsedResponse);
+      llmobs.annotate({
+        inputData: parsedResponse,
+        outputData: validatedResponse
+      });
+      return validatedResponse;
+    });
 
     const responseWithId = {
       id: crypto.randomUUID(),
@@ -283,6 +319,10 @@ export async function POST(req: Request) {
 
     measureTime("API Complete");
 
+    llmobs.annotate({
+      outputData: responseWithId
+    });
+
     return apiResponse;
   } catch (error) {
     // Handle errors in AI response generation
@@ -300,3 +340,7 @@ export async function POST(req: Request) {
     });
   }
 }
+
+const LLMObsPOST = llmobs.wrap('agent', { name: 'runAgent' }, POST);
+
+export { LLMObsPOST as POST };

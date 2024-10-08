@@ -297,7 +297,13 @@ const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   </div>
 );
 
-function ChatArea() {
+interface ChatAreaProps {
+  sessionId?: string;
+}
+
+console.log('setting a session ID:', crypto.randomUUID());
+
+const ChatArea: React.FC<ChatAreaProps> = ({ sessionId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -450,6 +456,7 @@ function ChatArea() {
           messages: [...messages, userMessage],
           model: selectedModel,
           knowledgeBaseId: selectedKnowledgeBase,
+          sessionId,
         }),
       });
 
