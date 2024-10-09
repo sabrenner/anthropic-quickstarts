@@ -71,7 +71,7 @@ async function POST(req: Request) {
 
   // Extract data from the request body
   const { messages, model, knowledgeBaseId, sessionId } = await req.json();
-  llmobs.annotate({ inputData: { messages, model, knowledgeBaseId }, tags: { session_id: sessionId } });
+  llmobs.annotate({ inputData: messages[messages.length - 1].content, tags: { session_id: sessionId } });
   const latestMessage = messages[messages.length - 1].content;
 
   console.log("📝 Latest Query:", latestMessage);
@@ -241,10 +241,15 @@ async function POST(req: Request) {
 
       llmobs.annotate({
         inputData: [ { role: 'system', content: systemPrompt }, ...messages ],
-        outputData: [{ content: response?.content, role: response?.role }],
+        outputData: response?.content.filter((block): block is Anthropic.TextBlock => block.type === "text").map(block => ({ content: block.text, role: 'assistant'})),
         metadata: {
           max_tokens: 1000,
           temperature: 0.3,
+        },
+        metrics: {
+          input_tokens: response?.usage.input_tokens,
+          output_tokens: response?.usage.output_tokens,
+          total_tokens: response?.usage.input_tokens + response?.usage.output_tokens,
         }
       })
 
@@ -320,8 +325,15 @@ async function POST(req: Request) {
     measureTime("API Complete");
 
     llmobs.annotate({
-      outputData: responseWithId
+      outputData: responseWithId.response
     });
+
+    const spanCtx = llmobs.exportSpan()
+    llmobs.submitEvaluation(spanCtx, {
+      metricType: 'categorical',
+      label: 'user_mood',
+      value: responseWithId.user_mood
+    })
 
     return apiResponse;
   } catch (error) {
@@ -334,6 +346,11 @@ async function POST(req: Request) {
       user_mood: "neutral",
       debug: { context_used: false },
     };
+
+    llmobs.annotate({
+      outputData: errorResponse.response
+    })
+
     return new Response(JSON.stringify(errorResponse), {
       status: 500,
       headers: { "Content-Type": "application/json" },

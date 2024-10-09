@@ -313,11 +313,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ sessionId }) => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] = useState(
-    "your-knowledge-base-id",
+    "CPXIIABGOF",
   );
 
   const knowledgeBases: KnowledgeBase[] = [
-    { id: "your-knowledge-base-id", name: "Your KB Name" },
+    { id: "CPXIIABGOF", name: "Bedrock KB" },
     // Add more knowledge bases as needed
   ];
 

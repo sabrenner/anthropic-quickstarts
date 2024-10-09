@@ -15,8 +15,9 @@ console.log("🔑 Have AWS Secret?", !!process.env.BAWS_SECRET_ACCESS_KEY);
 const bedrockClient = new BedrockAgentRuntimeClient({
   region: "us-east-1", // Make sure this matches your Bedrock region
   credentials: {
-    accessKeyId: process.env.BAWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.BAWS_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    sessionToken: process.env.AWS_SESSION_TOKEN!,
   },
 });
 
@@ -48,16 +49,13 @@ async function retrieveContext(
     };
 
     const command = new RetrieveCommand(input);
-    const response = await llmobs.trace('retrieval', { name: 'bedrock.client.send' }, async () => {
+    const response = await llmobs.trace('tool', { name: 'fetchDocuments' }, async () => {
       llmobs.annotate({ inputData: { query }});
       const response = await bedrockClient.send(command);
 
       if (response.retrievalResults) {
         llmobs.annotate({
-          outputData: response.retrievalResults.map((r: KnowledgeBaseRetrievalResult) => ({
-            score: r.score,
-            text: r.content?.text,
-          }))
+          outputData: response.retrievalResults
         });
       }
 
@@ -65,8 +63,9 @@ async function retrieveContext(
     })
 
     // Parse results
-    const { rawResults, ragSources } = llmobs.trace('task', { name: 'parseResults' }, () => {
-      const rawResults = response?.retrievalResults || [];
+    const rawResults = response?.retrievalResults || [];
+    const ragSources = llmobs.trace('task', { name: 'parseResults' }, () => {
+      llmobs.annotate({ inputData: rawResults })
       const ragSources: RAGSource[] = rawResults
         .filter((res: any) => res.content && res.content.text)
         .map((result: any, index: number) => {
@@ -83,15 +82,26 @@ async function retrieveContext(
         })
         .slice(0, 1);
 
+      llmobs.annotate({ outputData: ragSources })
+
       console.log("🔍 Parsed RAG Sources:", ragSources); // Debug log
 
-      return { rawResults, ragSources }
+      return ragSources
     })
 
     const context = rawResults
       .filter((res: any) => res.content && res.content.text)
       .map((res: any) => res.content.text)
       .join("\n\n");
+
+    llmobs.annotate({
+      outputData: ragSources.map(source => ({
+        id: source.id,
+        name: source.fileName,
+        score: source.score,
+        text: source.snippet
+      }))
+    })
 
     return {
       context,
@@ -104,5 +114,5 @@ async function retrieveContext(
   }
 }
 
-const LLMObsRetrieveContext = llmobs.wrap('workflow', retrieveContext);
+const LLMObsRetrieveContext = llmobs.wrap('retrieval', retrieveContext);
 export { LLMObsRetrieveContext as retrieveContext };
